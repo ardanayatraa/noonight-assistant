@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.next/
+.env
+*.log
+workspace_data/
+storage_data/
+redis_data/

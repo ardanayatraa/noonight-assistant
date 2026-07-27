@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Noonight Assistant</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f1117;color:#e4e6ed;font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh}
+header{background:#1a1d27;border-bottom:1px solid #2a2d3a;padding:16px 24px;display:flex;justify-content:space-between;align-items:center}
+h1{font-size:20px}
+.btn{padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-size:14px;color:#fff}
+.btn-primary{background:#5c7cfa}
+.btn-danger{background:#2a2d3a;border:1px solid #3a3d4a}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.card{background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:16px;margin-bottom:12px}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.form-group{margin-bottom:12px}
+input,select{width:100%;padding:10px;border-radius:8px;border:1px solid #2a2d3a;background:#0f1117;color:#e4e6ed;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.muted{color:#8b8fa3;font-size:13px}
+.tag{padding:2px 8px;border-radius:4px;font-size:12px;background:#1a3a2a;color:#4ade80}
+.tag-warn{background:#3a2a1a;color:#fbbf24}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100}
+.modal-content{background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:24px;width:100%;max-width:480px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px}
+.stat-card{background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:16px;text-align:center}
+.stat-value{font-size:28px;font-weight:bold;color:#5c7cfa}
+</style>
+</head>
+<body>
+<header>
+<h1>🛸 Noonight Assistant</h1>
+<div>
+<span id="userInfo" class="muted"></span>
+<button class="btn btn-danger" onclick="logout()" id="logoutBtn" style="display:none;margin-left:12px">Logout</button>
+</div>
+</header>
+
+<div class="container">
+<!-- Login -->
+<div id="loginScreen">
+<div style="max-width:400px;margin:80px auto">
+<div class="card" style="padding:32px">
+<h2 style="margin-bottom:24px">Login</h2>
+<div class="form-group"><input id="loginEmail" placeholder="Email" value="admin@noonight.cloud"></div>
+<div class="form-group"><input id="loginPass" type="password" placeholder="Password"></div>
+<button class="btn btn-primary" onclick="login()" style="width:100%;padding:12px;font-size:16px">Login</button>
+</div>
+</div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" style="display:none">
+<div class="stats">
+<div class="stat-card"><div class="stat-value" id="statClients">0</div><div class="muted">Clients</div></div>
+<div class="stat-card"><div class="stat-value" id="statProjects">0</div><div class="muted">Projects</div></div>
+<div class="stat-card"><div class="stat-value" id="statSessions">0</div><div class="muted">Sessions</div></div>
+</div>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<h2>Clients</h2>
+<button class="btn btn-primary" onclick="showAddClient()">+ Add Client</button>
+</div>
+<div id="clientsList"></div>
+</div>
+
+<!-- Add Client Modal -->
+<div id="addClientModal" class="modal" style="display:none">
+<div class="modal-content">
+<h3 style="margin-bottom:16px">Add Client</h3>
+<div class="form-group"><input id="clientName" placeholder="Name *"></div>
+<div class="form-group"><input id="clientCompany" placeholder="Company"></div>
+<div class="form-group"><input id="clientWA" placeholder="WhatsApp (628xxx) *"></div>
+<div style="display:flex;gap:8px">
+<button class="btn btn-primary" onclick="addClient()">Save</button>
+<button class="btn btn-danger" onclick="closeModal('addClientModal')">Cancel</button>
+</div>
+</div>
+</div>
+
+<!-- Add Project Modal -->
+<div id="addProjectModal" class="modal" style="display:none">
+<div class="modal-content">
+<h3 style="margin-bottom:16px">Add Project</h3>
+<div class="form-group"><input id="projectName" placeholder="Project name *"></div>
+<div class="form-group"><input id="projectRepo" placeholder="GitHub URL *"></div>
+<div style="display:flex;gap:8px">
+<button class="btn btn-primary" onclick="addProject()">Create</button>
+<button class="btn btn-danger" onclick="closeModal('addProjectModal')">Cancel</button>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+const API = '/api/v1';
+let token = '', selectedClient = '';
+
+async function api(path, opts={}) {
+const res = await fetch(API+path,{...opts,headers:{'Content-Type':'application/json',...token?{Authorization:'Bearer '+token}:{},...opts.headers}});
+return res.json();
+}
+
+async function login() {
+const d = await api('/auth/login',{method:'POST',body:JSON.stringify({email:document.getElementById('loginEmail').value,password:document.getElementById('loginPass').value})});
+if(d.token){token=d.token;document.getElementById('loginScreen').style.display='none';document.getElementById('dashboard').style.display='block';document.getElementById('logoutBtn').style.display='inline';document.getElementById('userInfo').textContent=d.user.email;loadData();}
+else alert('Login failed');
+}
+
+function logout(){token='';location.reload();}
+
+async function loadData(){
+const clients=await api('/clients');
+document.getElementById('statClients').textContent=clients.length||0;
+let projCount=0;
+document.getElementById('clientsList').innerHTML=clients.length?clients.map(c=>{projCount+=c.projects?.length||0;return`<div class="card"><div class="card-header"><strong>${c.name}</strong><span class="tag">${c.status}</span></div><div class="muted">${c.company||'No company'} · WA: ${c.whatsappNumber} · ${c.projects?.length||0} projects</div><div style="margin-top:8px">${(c.projects||[]).map(p=>`<span class="tag" style="margin-right:4px">${p.name} <span class="${p.status==='ready'?'tag':'tag-warn'}">${p.status}</span></span>`).join('')||'<span class="muted">No projects</span>'}</div><button class="btn btn-primary" style="margin-top:8px;font-size:12px" onclick="showAddProject('${c.uuid}')">+ Project</button></div>`}).join(''):'<div class="card"><div class="muted">No clients yet. Add your first client.</div></div>';
+document.getElementById('statProjects').textContent=projCount;
+}
+
+function showAddClient(){document.getElementById('addClientModal').style.display='flex';}
+function showAddProject(uuid){selectedClient=uuid;document.getElementById('addProjectModal').style.display='flex';}
+function closeModal(id){document.getElementById(id).style.display='none';}
+
+async function addClient(){
+const d=await api('/clients',{method:'POST',body:JSON.stringify({name:document.getElementById('clientName').value,company:document.getElementById('clientCompany').value,whatsappNumber:document.getElementById('clientWA').value})});
+if(d.uuid){closeModal('addClientModal');loadData();}
+else alert('Error: '+JSON.stringify(d));
+}
+
+async function addProject(){
+const d=await api('/clients/'+selectedClient+'/projects',{method:'POST',body:JSON.stringify({name:document.getElementById('projectName').value,repoUrl:document.getElementById('projectRepo').value})});
+if(d.uuid){closeModal('addProjectModal');loadData();}
+else alert('Error: '+JSON.stringify(d));
+}
+</script>
+</body>
+</html>

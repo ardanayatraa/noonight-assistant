@@ -1,0 +1,20 @@
+{
+  "name": "noonight-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-tenant AI Developer Assistant — WhatsApp + Web Chat",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:frontend\"",
+    "dev:api": "cd src && npm run start:dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:api && npm run build:frontend",
+    "build:api": "cd src && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "db:migrate": "cd src && npx prisma migrate dev",
+    "db:seed": "cd src && npx prisma db seed",
+    "install:all": "npm install && cd src && npm install && cd ../frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
