@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { api, auth } from '../lib/api';
+import { IconLogo } from '../lib/icons';
 
 export default function Login({ onSuccess }: { onSuccess: () => void }) {
   const [mode, setMode] = useState<'login' | 'setup'>('login');
@@ -36,7 +37,7 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 20, background: 'var(--bg)' }}>
       <div className="card card-pad" style={{ width: '100%', maxWidth: 400 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 13, display: 'grid', placeItems: 'center', background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 22 }}>🛸</div>
+          <div style={{ width: 44, height: 44, borderRadius: 13, display: 'grid', placeItems: 'center', background: 'var(--accent)', color: 'var(--accent-contrast)' }}><IconLogo size={24} /></div>
           <div>
             <h1 style={{ fontSize: 18 }}>Noonight Assistant</h1>
             <div className="muted" style={{ fontSize: 13 }}>Admin Console</div>

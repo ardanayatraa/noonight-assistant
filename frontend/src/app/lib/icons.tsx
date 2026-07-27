@@ -88,6 +88,20 @@ export const IconChat = ({ size, className }: P) => (
 export const IconCheck = ({ size, className }: P) => (
   <svg {...base(size)} className={className}><path d="M20 6 9 17l-5-5" /></svg>
 );
+export const IconWallet = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1H5a2 2 0 0 0-2 2Z" />
+    <rect x="3" y="8" width="18" height="12" rx="2.5" />
+    <circle cx="16.5" cy="14" r="1.3" fill="currentColor" stroke="none" />
+  </svg>
+);
+// Brand mark: crescent moon + spark ("Noonight")
+export const IconLogo = ({ size = 20, className }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+    <path d="M20 14.2A8 8 0 1 1 9.8 4a6.4 6.4 0 0 0 10.2 10.2Z" fill="currentColor" />
+    <path d="M17.5 3.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7Z" fill="currentColor" />
+  </svg>
+);
 export const IconSync = ({ size, className }: P) => (
   <svg {...base(size)} className={className}>
     <path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.6-4.2M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.6 4.2" />

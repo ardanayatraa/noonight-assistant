@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { api, Client } from '../../lib/api';
 import { IconUsers, IconRepo, IconBot, IconCheck, IconChat } from '../../lib/icons';
 
@@ -18,7 +19,8 @@ function Stat({ label, value, icon }: { label: string; value: number | string; i
   );
 }
 
-export default function DashboardView({ goUsers }: { goUsers: () => void }) {
+export default function DashboardView() {
+  const router = useRouter();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,7 +46,7 @@ export default function DashboardView({ goUsers }: { goUsers: () => void }) {
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px' }}>
           <h3 style={{ fontSize: 15.5 }}>User Terbaru</h3>
-          <button className="btn btn-sm btn-subtle" onClick={goUsers}>Kelola user</button>
+          <button className="btn btn-sm btn-subtle" onClick={() => router.push('/users')}>Kelola user</button>
         </div>
         <hr className="divider" />
         {loading ? (

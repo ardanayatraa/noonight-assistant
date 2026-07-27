@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { api, Client, Project } from '../../lib/api';
-import { IconPlus, IconRepo, IconTrash, IconCheck, IconX, IconSync, IconAlert } from '../../lib/icons';
+import { IconPlus, IconRepo, IconTrash, IconCheck, IconX, IconSync, IconAlert, IconBot, IconWallet } from '../../lib/icons';
 import UserFormModal from '../UserFormModal';
 
 const IN_PROGRESS = (s: Project['status']) => s === 'cloning' || s === 'indexing';
@@ -198,9 +198,9 @@ export default function UsersView() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 650, fontSize: 15.5 }}>{c.name}</span>
-                      {c.agent && <span className="badge badge-accent">🤖 {c.agent.name}</span>}
+                      {c.agent && <span className="badge badge-accent"><IconBot size={13} /> {c.agent.name}</span>}
                       <span className={`badge ${balanceClass(c.requestBalance ?? 0)}`} title={`${c.requestsUsed ?? 0} request terpakai`}>
-                        💳 {c.requestBalance ?? 0} request
+                        <IconWallet size={13} /> {c.requestBalance ?? 0} request
                       </span>
                     </div>
                     <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>{c.company || 'Tanpa perusahaan'} · {c.whatsappNumber}</div>
