@@ -1,12 +1,16 @@
 'use client';
 
+export type ProjectStatus = 'cloning' | 'ready' | 'error' | 'indexing';
+
 export type Project = {
   id?: number;
   uuid: string;
   name: string;
-  status: 'cloning' | 'ready' | 'error' | 'indexing';
+  status: ProjectStatus;
+  statusDetail?: string | null;
   repoUrl?: string;
   framework?: string | null;
+  lastSyncedAt?: string | null;
   branch?: string;
 };
 

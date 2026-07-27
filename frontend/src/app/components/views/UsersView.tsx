@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { api, Client, Project } from '../../lib/api';
-import { IconPlus, IconRepo, IconTrash, IconCheck, IconX } from '../../lib/icons';
+import { IconPlus, IconRepo, IconTrash, IconCheck, IconX, IconSync, IconAlert } from '../../lib/icons';
 import UserFormModal from '../UserFormModal';
+
+const IN_PROGRESS = (s: Project['status']) => s === 'cloning' || s === 'indexing';
 
 function StatusBadge({ status }: { status: Project['status'] }) {
   const map: Record<Project['status'], string> = {
@@ -12,7 +14,15 @@ function StatusBadge({ status }: { status: Project['status'] }) {
     cloning: 'badge-warning',
     error: 'badge-danger',
   };
-  return <span className={`badge ${map[status]}`}><span className="dot" />{status}</span>;
+  const label: Record<Project['status'], string> = {
+    ready: 'siap', indexing: 'indexing', cloning: 'cloning', error: 'error',
+  };
+  return (
+    <span className={`badge ${map[status]}`}>
+      {IN_PROGRESS(status) ? <span className="spinner" style={{ width: 9, height: 9 }} /> : <span className="dot" />}
+      {label[status]}
+    </span>
+  );
 }
 
 function AddRepoModal({ client, onClose, onDone }: { client: Client; onClose: () => void; onDone: () => void }) {
@@ -117,21 +127,44 @@ export default function UsersView() {
   const [addRepoFor, setAddRepoFor] = useState<Client | null>(null);
   const [topupFor, setTopupFor] = useState<Client | null>(null);
   const [busy, setBusy] = useState<string>('');
+  const [syncing, setSyncing] = useState<string>('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try { setClients((await api<Client[]>('clients')) || []); } catch {}
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Realtime indicator: while any repo is cloning/indexing, poll silently every 2.5s
+  const inProgress = clients.some((c) => (c.projects || []).some((p) => IN_PROGRESS(p.status)));
+  useEffect(() => {
+    if (!inProgress) return;
+    const t = setInterval(() => load(true), 2500);
+    return () => clearInterval(t);
+  }, [inProgress, load]);
 
   const setActive = async (client: Client, project: Project) => {
     setBusy(project.uuid);
     try {
       await api(`clients/${client.uuid}/active-project`, { method: 'PUT', body: JSON.stringify({ projectUuid: project.uuid }) });
-      await load();
+      await load(true);
     } catch {} finally { setBusy(''); }
+  };
+
+  // Trigger clone / pull. Optimistically flip to "cloning" so the live poller kicks in.
+  const doSync = async (project: Project) => {
+    setSyncing(project.uuid);
+    setClients((cs) => cs.map((c) => ({
+      ...c,
+      projects: (c.projects || []).map((p) =>
+        p.uuid === project.uuid ? { ...p, status: 'cloning' as const, statusDetail: 'Memulai…' } : p),
+    })));
+    try {
+      await api(`projects/${project.uuid}/sync`, { method: 'POST' });
+      await load(true);
+    } catch {} finally { setSyncing(''); }
   };
 
   const removeUser = async (client: Client) => {
@@ -193,13 +226,34 @@ export default function UsersView() {
                           {isActive && <span className="badge badge-accent" style={{ fontSize: 11 }}>aktif</span>}
                         </div>
                         <div className="mono muted" style={{ marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.repoUrl}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+
+                        {(p.statusDetail || p.status !== 'ready') && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12, color: p.status === 'error' ? 'var(--danger)' : 'var(--text-muted)' }}>
+                            {IN_PROGRESS(p.status) && <span className="spinner" style={{ width: 11, height: 11 }} />}
+                            {p.status === 'error' && <IconAlert size={13} />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.statusDetail || p.status}</span>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
                           <StatusBadge status={p.status} />
-                          {!isActive && (
-                            <button className="btn btn-sm btn-ghost" disabled={busy === p.uuid} onClick={() => setActive(c, p)}>
-                              {busy === p.uuid ? <span className="spinner" /> : <><IconCheck size={13} /> Jadikan aktif</>}
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              className="btn btn-sm btn-ghost"
+                              disabled={syncing === p.uuid || IN_PROGRESS(p.status)}
+                              onClick={() => doSync(p)}
+                              title="Clone / tarik pembaruan terbaru dari GitHub"
+                            >
+                              {syncing === p.uuid || IN_PROGRESS(p.status)
+                                ? <span className="spinner" />
+                                : <><IconSync size={13} /> {p.status === 'error' ? 'Coba lagi' : p.status === 'ready' ? 'Sync' : 'Clone'}</>}
                             </button>
-                          )}
+                            {!isActive && p.status === 'ready' && (
+                              <button className="btn btn-sm btn-ghost" disabled={busy === p.uuid} onClick={() => setActive(c, p)}>
+                                {busy === p.uuid ? <span className="spinner" /> : <><IconCheck size={13} /> Aktifkan</>}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );

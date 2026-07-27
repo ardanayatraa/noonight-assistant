@@ -59,6 +59,7 @@ export class ProjectsService {
         githubTokenEncrypted: data.githubToken,
         workspacePath: `/workspaces/${client.uuid}/${crypto.randomUUID()}`,
         status: 'cloning',
+        statusDetail: 'Menunggu proses clone…',
       },
     });
 
@@ -90,8 +91,10 @@ export class ProjectsService {
       uuid: project.uuid,
       name: project.name,
       status: project.status,
+      statusDetail: project.statusDetail,
       framework: project.framework,
       lastSyncedAt: project.lastSyncedAt,
+      updatedAt: project.updatedAt,
     };
   }
 }

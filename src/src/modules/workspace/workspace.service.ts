@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/prisma.service';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
@@ -86,17 +87,13 @@ export class WorkspaceService {
     if (!project || !project.workspacePath) return;
 
     try {
-      const framework = this.detectFramework(project.workspacePath);
-      const structure = this.buildStructureSummary(project.workspacePath);
-
       await this.prisma.project.update({
         where: { uuid: projectUuid },
-        data: {
-          framework: framework.name,
-          frameworkConfidence: framework.confidence,
-          status: 'ready',
-        },
+        data: { status: 'indexing', statusDetail: 'Detecting framework & indexing files…' },
       });
+
+      const framework = this.detectFramework(project.workspacePath);
+      const structure = this.buildStructureSummary(project.workspacePath);
 
       // Store structure as AI memory
       await this.prisma.aiMemory.upsert({
@@ -110,14 +107,30 @@ export class WorkspaceService {
         },
       });
 
+      await this.prisma.project.update({
+        where: { uuid: projectUuid },
+        data: {
+          framework: framework.name,
+          frameworkConfidence: framework.confidence,
+          status: 'ready',
+          statusDetail: `Siap · ${framework.name}`,
+          lastSyncedAt: new Date(),
+        },
+      });
+
       this.logger.log(`Indexed ${project.name} → ${framework.name} (${framework.confidence})`);
     } catch (err: any) {
       this.logger.error(`Index failed: ${err.message}`);
       await this.prisma.project.update({
         where: { uuid: projectUuid },
-        data: { status: 'error' },
+        data: { status: 'error', statusDetail: `Indexing gagal: ${String(err.message).slice(0, 300)}` },
       });
     }
+  }
+
+  @OnEvent('project.index')
+  async onProjectIndex(project: { uuid: string }) {
+    await this.indexProject(project.uuid);
   }
 
   /**
@@ -172,13 +185,5 @@ export class WorkspaceService {
     } catch {
       return 'Cannot read file.';
     }
-  }
-
-  async onProjectCreated(project: any) {
-    setTimeout(() => this.indexProject(project.uuid), 5000);
-  }
-
-  async onProjectSync(project: any) {
-    setTimeout(() => this.indexProject(project.uuid), 3000);
   }
 }

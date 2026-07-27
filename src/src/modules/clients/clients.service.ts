@@ -14,7 +14,13 @@ export class ClientsService {
     return this.prisma.client.findMany({
       where: status ? { status: status as any } : {},
       include: {
-        projects: { select: { id: true, uuid: true, name: true, status: true, repoUrl: true } },
+        projects: {
+          select: {
+            id: true, uuid: true, name: true, status: true, statusDetail: true,
+            repoUrl: true, framework: true, lastSyncedAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
         agent: { select: { uuid: true, name: true, provider: true, model: true, isActive: true } },
       },
       orderBy: { createdAt: 'desc' },

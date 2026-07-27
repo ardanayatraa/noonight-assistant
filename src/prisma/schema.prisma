@@ -91,6 +91,7 @@ model Project {
   framework     String?   @db.VarChar(100)
   frameworkConfidence Float? @map("framework_confidence")
   status        ProjectStatus @default(cloning)
+  statusDetail  String?   @map("status_detail") @db.VarChar(500)
   workspacePath String?   @map("workspace_path") @db.VarChar(500)
   githubTokenEncrypted String? @map("github_token_encrypted") @db.Text
   githubWebhookSecret  String? @map("github_webhook_secret") @db.VarChar(255)
