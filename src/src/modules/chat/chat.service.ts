@@ -3,6 +3,8 @@ import { PrismaService } from '../../database/prisma.service';
 import { ClientsService } from '../clients/clients.service';
 import { WorkspaceService } from '../workspace/workspace.service';
 import { AiService } from '../ai/ai.service';
+import { AgentsService } from '../agents/agents.service';
+import { MemoryService } from '../memory/memory.service';
 import { AiProviderConfig, AiProviderType } from '../ai/providers/ai-provider.interface';
 import * as crypto from 'crypto';
 
@@ -15,66 +17,69 @@ export class ChatService {
     private clientsService: ClientsService,
     private workspaceService: WorkspaceService,
     private aiService: AiService,
+    private agentsService: AgentsService,
+    private memoryService: MemoryService,
   ) {}
 
   async handleWhatsAppMessage(from: string, body: string): Promise<string> {
     try {
-      // 1. Lookup client by WhatsApp number
+      // 1. Lookup client (with agent, all ready repos, and resolved active repo)
       const client = await this.clientsService.findByWhatsApp(from);
       if (!client) {
         return 'Nomor Anda belum terdaftar. Silakan hubungi admin untuk didaftarkan.';
       }
 
-      // 2. Get the active project
-      const project = client.projects[0];
-      if (!project) {
-        return 'Belum ada project yang terhubung ke akun Anda.';
+      // 2. Handle slash commands before requiring a ready project
+      if (body.trim().startsWith('/project')) {
+        return this.handleProjectSwitch(client, body);
       }
 
+      // 3. Resolve the active repo for this user
+      const project = client.activeProject;
+      if (!project) {
+        return 'Belum ada project yang siap di akun Anda. Ketik /project untuk melihat daftar.';
+      }
       if (project.status === 'cloning') {
         return 'Project Anda sedang disiapkan. Silakan coba lagi dalam beberapa menit.';
       }
-
       if (project.status === 'error') {
         return 'Project Anda mengalami kendala saat cloning. Admin sedang mengecek.';
       }
 
-      // 3. Handle slash commands
-      if (body.startsWith('/project')) {
-        return this.handleProjectSwitch(client, body);
+      // 4. Prepaid quota: each real question costs 1 request
+      if ((client.requestBalance ?? 0) <= 0) {
+        return (
+          '⚠️ Saldo request Anda habis (0 tersisa).\n' +
+          'Silakan hubungi admin untuk menambah saldo agar bisa bertanya lagi tentang project Anda.'
+        );
       }
 
-      // 4. Find or create session
+      // 5. Per-user agent (persona + provider/model)
+      const agent = client.agent ?? (await this.agentsService.ensureForClient(client.id));
+
+      // 6. Session + AI context
       const session = await this.findOrCreateSession(project.id, from, 'whatsapp');
-
-      // 5. Get AI context
       const structure = await this.getProjectMemory(project.id, 'project_structure');
-      const codeResults = this.workspaceService.searchCode(
-        project.workspacePath || '',
-        body,
-      );
-
-      // 6. Get conversation history
+      const codeResults = this.workspaceService.searchCode(project.workspacePath || '', body);
+      const memory = await this.memoryService.buildContext(client.id, project.id);
       const history = await this.getRecentHistory(session.id);
+      const aiConfig = await this.getAiConfig(project, agent);
 
-      // 7. Get AI provider config
-      const aiConfig = await this.getAiConfig(project);
-
-      // 8. Send to AI
+      // 7. Ask the agent
       const answer = await this.aiService.answerProjectQuery(aiConfig, body, {
+        agentName: agent?.name || 'Hermes',
+        persona: agent?.persona || '',
         projectName: project.name,
         framework: project.framework || 'Unknown',
         structure: structure || '',
         codeResults,
-        memory: '',
+        memory,
         history,
       });
 
-      // 9. Save conversation
+      // 8. Persist conversation + session usage
       await this.saveMessage(session.id, project.id, 'user', body);
       await this.saveMessage(session.id, project.id, 'assistant', answer);
-
-      // 10. Update session
       await this.prisma.session.update({
         where: { id: session.id },
         data: {
@@ -83,7 +88,21 @@ export class ChatService {
         },
       });
 
-      return answer;
+      // 9. Charge 1 request and report the remaining balance
+      const updated = await this.prisma.client.update({
+        where: { id: client.id },
+        data: { requestBalance: { decrement: 1 }, requestsUsed: { increment: 1 } },
+        select: { requestBalance: true },
+      });
+      const remaining = updated.requestBalance;
+      const footer =
+        remaining <= 0
+          ? '\n\n— Ini pertanyaan terakhir Anda. Saldo habis, hubungi admin untuk top-up.'
+          : remaining <= 5
+            ? `\n\n— Sisa saldo: ${remaining} request (menipis)`
+            : `\n\n— Sisa saldo: ${remaining} request`;
+
+      return answer + footer;
     } catch (err: any) {
       this.logger.error(`Chat error: ${err.message}`);
       return 'Maaf, terjadi kesalahan. Silakan coba lagi nanti.';
@@ -130,14 +149,13 @@ export class ChatService {
       },
     });
 
-    return (conversation?.messages || []).map(m => ({
+    return (conversation?.messages || []).map((m) => ({
       role: m.role,
       content: m.content,
     }));
   }
 
   private async saveMessage(sessionId: bigint, projectId: bigint, role: string, content: string) {
-    // Find or create conversation for this session
     let conversation = await this.prisma.conversation.findFirst({
       where: { sessionId },
       orderBy: { createdAt: 'desc' },
@@ -171,7 +189,30 @@ export class ChatService {
     });
   }
 
-  private async getAiConfig(project: any): Promise<AiProviderConfig> {
+  /**
+   * Resolve provider config: agent override → default provider row → env.
+   * The agent may swap only the model, or the whole provider (if a matching
+   * active AiProvider row exists to supply the API key).
+   */
+  private async getAiConfig(project: any, agent: any): Promise<AiProviderConfig> {
+    const temperature = agent?.temperature ?? 0.3;
+
+    // Whole-provider override via the agent
+    if (agent?.provider) {
+      const row = await this.prisma.aiProvider.findFirst({
+        where: { provider: agent.provider, isActive: true },
+      });
+      if (row) {
+        return {
+          type: row.provider as AiProviderType,
+          apiKey: row.apiKey,
+          model: agent.model || row.model,
+          baseUrl: row.baseUrl || undefined,
+          temperature,
+        };
+      }
+    }
+
     const defaultProvider = await this.prisma.aiProvider.findFirst({
       where: { isDefault: true, isActive: true },
     });
@@ -180,35 +221,40 @@ export class ChatService {
       return {
         type: defaultProvider.provider as AiProviderType,
         apiKey: defaultProvider.apiKey,
-        model: project.aiModelOverride || defaultProvider.model,
+        model: agent?.model || project.aiModelOverride || defaultProvider.model,
         baseUrl: defaultProvider.baseUrl || undefined,
+        temperature,
       };
     }
 
     return {
       type: 'deepseek' as AiProviderType,
       apiKey: process.env.DEEPSEEK_API_KEY || '',
-      model: 'deepseek-chat',
+      model: agent?.model || 'deepseek-chat',
       baseUrl: 'https://api.deepseek.com/v1',
+      temperature,
     };
   }
 
   private async handleProjectSwitch(client: any, body: string): Promise<string> {
-    const parts = body.split(' ');
+    const projects: any[] = client.projects || [];
+    const parts = body.trim().split(/\s+/);
+
     if (parts.length < 2) {
-      const projectNames = client.projects?.map((p: any) => `- ${p.name}`).join('\n') || 'Tidak ada project';
-      return `Project Anda:\n${projectNames}\n\nKetik /project <nama> untuk berpindah.`;
+      if (!projects.length) return 'Belum ada project yang siap di akun Anda.';
+      const list = projects
+        .map((p) => `${p.id === client.activeProjectId ? '▶︎' : '•'} ${p.name}`)
+        .join('\n');
+      return `Repositori Anda:\n${list}\n\nKetik /project <nama> untuk berpindah.`;
     }
 
     const targetName = parts.slice(1).join(' ');
-    const target = client.projects?.find(
-      (p: any) => p.name.toLowerCase() === targetName.toLowerCase(),
-    );
-
+    const target = projects.find((p) => p.name.toLowerCase() === targetName.toLowerCase());
     if (!target) {
       return `Project "${targetName}" tidak ditemukan.`;
     }
 
-    return `Berpindah ke project: ${target.name}`;
+    await this.clientsService.setActiveProject(client.uuid, target.uuid);
+    return `✅ Berpindah ke project: ${target.name}`;
   }
 }

@@ -43,6 +43,12 @@ export class ProjectsService {
     const client = await this.prisma.client.findUnique({ where: { uuid: data.clientUuid } });
     if (!client) throw new NotFoundException('Client not found');
 
+    // Business rule: each user may connect at most 2 repositories.
+    const repoCount = await this.prisma.project.count({ where: { clientId: client.id } });
+    if (repoCount >= 2) {
+      throw new BadRequestException('This user already has the maximum of 2 repositories');
+    }
+
     const project = await this.prisma.project.create({
       data: {
         uuid: crypto.randomUUID(),

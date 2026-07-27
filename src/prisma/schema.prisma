@@ -13,18 +13,63 @@ model Client {
   name        String    @db.VarChar(255)
   company     String?   @db.VarChar(255)
   email       String?   @db.VarChar(255)
-  whatsappNumber String @map("whatsapp_number") @db.VarChar(30)
+  whatsappNumber String @unique @map("whatsapp_number") @db.VarChar(30)
   status      ClientStatus @default(active)
   workspaceRoot String? @map("workspace_root") @db.VarChar(500)
   settings    Json?
+  // Prepaid request quota: each AI question spends 1; admin tops it up.
+  requestBalance Int    @default(25) @map("request_balance")
+  requestsUsed   Int    @default(0)  @map("requests_used")
+  // Which repo the user is currently talking to (for WhatsApp context switching)
+  activeProjectId BigInt? @map("active_project_id")
+  activeProject   Project? @relation("ActiveProject", fields: [activeProjectId], references: [id], onDelete: SetNull)
   projects    Project[]
+  agent       Agent?
+  memories    ClientMemory[]
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@index([uuid])
   @@index([whatsappNumber])
   @@index([status])
+  @@index([activeProjectId])
   @@map("clients")
+}
+
+// Per-user Hermes agent: one agent owned by a client, serves all their repos.
+model Agent {
+  id           BigInt   @id @default(autoincrement())
+  uuid         String   @unique @db.Char(36)
+  clientId     BigInt   @unique @map("client_id")
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name         String   @default("Hermes") @db.VarChar(100)
+  persona      String?  @db.Text
+  provider     String?  @db.VarChar(50)
+  model        String?  @db.VarChar(100)
+  temperature  Float    @default(0.3)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@map("agents")
+}
+
+// Per-user memory: shared across all of a client's repos.
+model ClientMemory {
+  id          BigInt    @id @default(autoincrement())
+  clientId    BigInt    @map("client_id")
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  key         String    @db.VarChar(255)
+  value       String?   @db.Text
+  type        MemoryType @default(knowledge)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@unique([clientId, key])
+  @@index([clientId])
+  @@index([type])
+  @@map("client_memory")
 }
 
 enum ClientStatus {
@@ -57,6 +102,7 @@ model Project {
   sessions      Session[]
   aiMemory      AiMemory[]
   conversations Conversation[]
+  activeForClients Client[] @relation("ActiveProject")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 

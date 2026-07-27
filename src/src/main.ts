@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { PrismaService } from './database/prisma.service';
 
 // Fix Prisma BigInt serialization
 (BigInt.prototype as any).toJSON = function () {
@@ -19,6 +20,11 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Clean pool shutdown on SIGTERM/SIGINT (PM2 / Docker)
+  const prisma = app.get(PrismaService);
+  await prisma.enableShutdownHooks(app);
+  app.enableShutdownHooks();
 
   const port = process.env.PORT || 3001;
   await app.listen(port);

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -120,26 +120,53 @@ export class WorkspaceService {
     }
   }
 
+  /**
+   * READ-ONLY code search. The query comes from an untrusted end-user message,
+   * so it is passed as an argv element (never a shell string) and treated as a
+   * fixed string — no shell, no command injection, no regex/ReDoS surface.
+   */
   searchCode(workspacePath: string, query: string, maxResults = 10): string {
+    if (!workspacePath || !fs.existsSync(workspacePath)) return 'No matches found.';
+    const q = (query || '').trim();
+    if (!q) return 'No matches found.';
+
     try {
-      const escaped = query.replace(/"/g, '\\"');
-      const result = execSync(
-        `rg --no-heading -n -M ${maxResults} "${escaped}" ${workspacePath} --glob '!.git' --glob '!node_modules' --glob '!vendor' --glob '!dist' 2>/dev/null || true`,
+      const out = execFileSync(
+        'rg',
+        [
+          '--no-heading',
+          '-n',
+          '-M',
+          String(maxResults),
+          '--fixed-strings', // treat the user query literally
+          '--glob', '!.git',
+          '--glob', '!node_modules',
+          '--glob', '!vendor',
+          '--glob', '!dist',
+          '-e', q,          // pattern as an explicit argument
+          workspacePath,    // search root (admin-controlled)
+        ],
         { encoding: 'utf-8', maxBuffer: 1024 * 1024, timeout: 10000 },
       );
-      return result.trim() || 'No matches found.';
-    } catch {
+      return out.trim() || 'No matches found.';
+    } catch (err: any) {
+      // ripgrep exits 1 when there are simply no matches
+      if (err?.status === 1) return 'No matches found.';
       return 'Search unavailable.';
     }
   }
 
+  /** READ-ONLY file read, strictly confined to the project's workspace. */
   getFileContent(workspacePath: string, filePath: string, maxLines = 200): string {
-    const fullPath = path.join(workspacePath, filePath);
-    if (!fs.existsSync(fullPath)) return 'File not found.';
-    if (fullPath.includes('..')) return 'Invalid path.';
-    
+    const root = path.resolve(workspacePath);
+    const target = path.resolve(root, filePath);
+
+    // Reject anything that escapes the workspace (path traversal / absolute paths)
+    if (target !== root && !target.startsWith(root + path.sep)) return 'Invalid path.';
+    if (!fs.existsSync(target) || !fs.statSync(target).isFile()) return 'File not found.';
+
     try {
-      const content = fs.readFileSync(fullPath, 'utf-8');
+      const content = fs.readFileSync(target, 'utf-8');
       const lines = content.split('\n').slice(0, maxLines);
       return lines.map((l, i) => `${i + 1}| ${l}`).join('\n');
     } catch {

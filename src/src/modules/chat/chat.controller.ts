@@ -1,11 +1,13 @@
 import { Controller, Post, Body, HttpCode } from '@nestjs/common';
 import { ChatService } from './chat.service';
+import { Public } from '../../common/decorators/public.decorator';
 
 @Controller()
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   // Hermes WhatsApp webhook endpoint
+  @Public()
   @Post('webhook/whatsapp')
   @HttpCode(200)
   async whatsappWebhook(@Body() body: { from: string; body: string }) {
@@ -17,6 +19,7 @@ export class ChatController {
   }
 
   // Web chat endpoint
+  @Public()
   @Post('webhook/chat')
   @HttpCode(200)
   async webChat(@Body() body: { sessionId: string; message: string }) {

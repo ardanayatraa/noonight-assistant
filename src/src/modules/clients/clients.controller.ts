@@ -25,6 +25,16 @@ export class ClientsController {
     return this.clientsService.update(uuid, body);
   }
 
+  @Put(':uuid/active-project')
+  setActiveProject(@Param('uuid') uuid: string, @Body() body: { projectUuid: string }) {
+    return this.clientsService.setActiveProject(uuid, body.projectUuid);
+  }
+
+  @Post(':uuid/topup')
+  topup(@Param('uuid') uuid: string, @Body() body: { amount: number }) {
+    return this.clientsService.adjustBalance(uuid, body.amount);
+  }
+
   @Delete(':uuid')
   remove(@Param('uuid') uuid: string) {
     return this.clientsService.remove(uuid);

@@ -5,7 +5,7 @@ import { AiProviderInterface, AiProviderConfig } from './providers/ai-provider.i
 export class AiService {
   private async callProvider(config: AiProviderConfig, messages: any[]): Promise<string> {
     const baseUrl = config.baseUrl || this.getDefaultBaseUrl(config.type);
-    
+
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -15,7 +15,7 @@ export class AiService {
       body: JSON.stringify({
         model: config.model,
         messages,
-        temperature: 0.3,
+        temperature: config.temperature ?? 0.3,
         max_tokens: 4096,
       }),
     });
@@ -48,6 +48,8 @@ export class AiService {
     config: AiProviderConfig,
     query: string,
     context: {
+      agentName?: string;
+      persona?: string;
       projectName: string;
       framework: string;
       structure: string;
@@ -56,17 +58,19 @@ export class AiService {
       history?: { role: string; content: string }[];
     },
   ): Promise<string> {
-    const systemPrompt = `You are Noonight Assistant, an AI developer assistant.
-
+    const agentName = context.agentName || 'Hermes';
+    const systemPrompt = `You are ${agentName}, a personal AI developer assistant dedicated to this specific user.
+${context.persona ? `\n${context.persona}\n` : ''}
 You are answering questions about the project: ${context.projectName}
 Framework: ${context.framework || 'Unknown'}
 
 CRITICAL RULES:
-1. Answer ONLY based on the actual source code provided below.
-2. If information is NOT in the code, say "I couldn't find that in the codebase."
-3. Never make up code, file paths, or functionality.
-4. Always cite the exact file path when referencing code.
-5. Never reference other projects or clients.
+1. You are strictly READ-ONLY. You can read and explain code, but you can NEVER modify files, run commands, access the server, or change anything. If asked to edit, delete, deploy, or run something, refuse and explain you can only answer questions about the code.
+2. Answer ONLY based on the actual source code provided below.
+3. If information is NOT in the code, say "I couldn't find that in the codebase."
+4. Never make up code, file paths, or functionality.
+5. Always cite the exact file path when referencing code.
+6. Never reference other users' projects or code. You serve only this user.
 
 PROJECT STRUCTURE:
 ${context.structure || 'No structure available.'}
@@ -74,8 +78,8 @@ ${context.structure || 'No structure available.'}
 RELEVANT CODE (found via search):
 ${context.codeResults || 'No code matches found.'}
 
-PROJECT MEMORY:
-${context.memory || 'No project memory.'}`;
+MEMORY (user + project):
+${context.memory || 'No memory yet.'}`;
 
     const messages: any[] = [
       { role: 'system', content: systemPrompt },
