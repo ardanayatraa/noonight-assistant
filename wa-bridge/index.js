@@ -34,6 +34,34 @@ function setState(patch) {
   Object.assign(state, patch, { updatedAt: Date.now() });
 }
 
+/**
+ * Resolve the sender's real phone number. Modern WhatsApp addresses chats by
+ * LID (@lid), not the phone JID (@s.whatsapp.net). Prefer any phone-number JID
+ * on the key; otherwise map the LID → phone number via Baileys' lid mapping.
+ */
+async function resolveSenderNumber(sock, key) {
+  const cands = [key.remoteJid, key.remoteJidAlt, key.participant, key.participantAlt]
+    .filter((j) => typeof j === 'string' && j);
+  let pn = cands.find((j) => j.endsWith('@s.whatsapp.net'));
+  if (!pn) {
+    const lid = cands.find((j) => j.endsWith('@lid'));
+    const lm = sock?.signalRepository?.lidMapping;
+    if (lid && lm) {
+      for (const fn of ['getPNForLID', 'getPnForLid', 'pnForLid']) {
+        try {
+          if (typeof lm[fn] === 'function') {
+            const r = await lm[fn](lid);
+            const val = typeof r === 'string' ? r : r?.pn || r?.jid || '';
+            if (val) { pn = val; break; }
+          }
+        } catch { /* ignore */ }
+      }
+    }
+  }
+  const jid = pn || cands[0] || '';
+  return jid.split('@')[0].split(':')[0];
+}
+
 async function start() {
   const { state: authState, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
   const { version } = await fetchLatestBaileysVersion();
@@ -97,7 +125,10 @@ async function start() {
           '';
         if (!text.trim()) continue;
 
-        const from = jid.split('@')[0].split(':')[0]; // bare phone number
+        const from = await resolveSenderNumber(sock, msg.key);
+        console.log(
+          `[wa] inbound from=${from} jid=${jid} alt=${msg.key.remoteJidAlt || '-'} :: ${text.slice(0, 60)}`,
+        );
 
         await sock.sendPresenceUpdate('composing', jid).catch(() => {});
         const resp = await fetch(NOONIGHT_WEBHOOK, {
