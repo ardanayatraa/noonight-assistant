@@ -200,7 +200,7 @@ export class WorkspaceService {
    * project: README + manifests + a sample of real source files (entry points
    * first). Capped in size. Used for broad "what is this project" questions.
    */
-  getProjectOverview(workspacePath: string, maxChars = 9000): string {
+  getProjectOverview(workspacePath: string, maxChars = 12000): string {
     if (!workspacePath || !fs.existsSync(workspacePath)) return '';
     const parts: string[] = [];
     let total = 0;
@@ -244,7 +244,7 @@ export class WorkspaceService {
       return s;
     };
     sources.sort((a, b) => rank(a) - rank(b));
-    for (const f of sources.slice(0, 14)) {
+    for (const f of sources.slice(0, 18)) {
       if (total >= maxChars) break;
       try {
         const content = fs.readFileSync(f, 'utf-8').split('\n').slice(0, 45).join('\n');
@@ -258,7 +258,8 @@ export class WorkspaceService {
   private collectSourceFiles(root: string, limit: number): string[] {
     const out: string[] = [];
     const walk = (dir: string, depth: number) => {
-      if (out.length >= limit || depth > 6) return;
+      // Deep enough for nested package paths (e.g. Android app/src/main/java/com/x/y/z)
+      if (out.length >= limit || depth > 12) return;
       let entries: string[] = [];
       try { entries = fs.readdirSync(dir); } catch { return; }
       for (const e of entries) {
