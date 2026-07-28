@@ -17,6 +17,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AgentsModule } from './modules/agents/agents.module';
 import { MemoryModule } from './modules/memory/memory.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 
 @Controller()
 export class AppController {
@@ -56,6 +57,7 @@ export class AppController {
     SettingsModule,
     AgentsModule,
     MemoryModule,
+    WhatsappModule,
   ],
   controllers: [AppController],
   providers: [

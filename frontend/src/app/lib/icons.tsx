@@ -88,6 +88,12 @@ export const IconChat = ({ size, className }: P) => (
 export const IconCheck = ({ size, className }: P) => (
   <svg {...base(size)} className={className}><path d="M20 6 9 17l-5-5" /></svg>
 );
+export const IconWhatsApp = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M21 11.5a8.5 8.5 0 0 1-12.5 7.5L3 21l2-5.5A8.5 8.5 0 1 1 21 11.5Z" />
+    <path d="M8.5 9c0 3 2.5 5.5 5.5 5.5.6-.9.3-1.4-.4-1.8l-1-.5c-.4-.2-.7 0-.9.3-.5-.2-1.2-.8-1.5-1.5.3-.2.5-.5.3-.9l-.5-1c-.4-.7-.9-1-1.8-.4A1.4 1.4 0 0 0 8.5 9Z" fill="currentColor" stroke="none" />
+  </svg>
+);
 export const IconWallet = ({ size, className }: P) => (
   <svg {...base(size)} className={className}>
     <path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1H5a2 2 0 0 0-2 2Z" />

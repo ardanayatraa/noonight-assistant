@@ -8,6 +8,7 @@ import {
   IconBot,
   IconMemory,
   IconProvider,
+  IconWhatsApp,
   IconLogo,
 } from '../lib/icons';
 
@@ -16,6 +17,7 @@ export const NAV: { href: string; label: string; icon: (p: any) => JSX.Element }
   { href: '/users', label: 'Users & Repos', icon: IconUsers },
   { href: '/agents', label: 'Hermes Agents', icon: IconBot },
   { href: '/memory', label: 'Memory', icon: IconMemory },
+  { href: '/whatsapp', label: 'WhatsApp', icon: IconWhatsApp },
   { href: '/providers', label: 'AI Providers', icon: IconProvider },
 ];
 

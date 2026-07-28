@@ -44,6 +44,29 @@ module.exports = {
     merge_logs: true,
     log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
   }, {
+    // Noonight's OWN WhatsApp connection (Baileys) — clients chat this, replies come from Noonight
+    name: 'noonight-wa',
+    cwd: '/root/noonight/wa-bridge',
+    script: 'index.js',
+    instances: 1,
+    exec_mode: 'fork',
+    env: {
+      NODE_ENV: 'production',
+      WA_BRIDGE_PORT: 3457,
+      NOONIGHT_WEBHOOK: 'http://127.0.0.1:3001/api/v1/webhook/whatsapp',
+      WA_SESSION_DIR: '/root/noonight/wa-bridge/session',
+    },
+    max_memory_restart: '300M',
+    autorestart: true,
+    kill_timeout: 10000,
+    restart_delay: 5000,
+    max_restarts: 20,
+    error_file: '/root/noonight/logs/wa-error.log',
+    out_file: '/root/noonight/logs/wa-out.log',
+    merge_logs: true,
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+  }, {
+    // Legacy HTTP relay (was fed by hermes). Kept idle; safe to remove later.
     name: 'whatsapp-bridge',
     cwd: '/root/noonight',
     script: 'bridge.py',

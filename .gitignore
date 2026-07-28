@@ -1,4 +1,5 @@
 node_modules/
+wa-bridge/session/
 dist/
 .next/
 .env
