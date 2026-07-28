@@ -31,14 +31,13 @@ export class WhatsappService {
   }
 
   /**
-   * Roster of active client phone numbers — consumed by the WA bridge to build
-   * a LID→phone map (WhatsApp addresses senders by LID, not phone number).
-   * Guarded by a shared secret since it is not behind the admin JWT.
+   * Roster of active client phone numbers — consumed by the local WA bridge to
+   * build a LID→phone map (WhatsApp addresses senders by LID, not phone number).
+   * Restricted to localhost callers (the bridge), never reachable externally.
    */
-  async roster(secret?: string): Promise<{ numbers: string[] }> {
-    const expected = process.env.WA_BRIDGE_SECRET;
-    if (!expected || secret !== expected) {
-      throw new ForbiddenException('Invalid bridge secret');
+  async roster(local: boolean): Promise<{ numbers: string[] }> {
+    if (!local) {
+      throw new ForbiddenException('Local access only');
     }
     const clients = await this.prisma.client.findMany({
       where: { status: 'active' },

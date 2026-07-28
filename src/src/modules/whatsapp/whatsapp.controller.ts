@@ -1,4 +1,4 @@
-import { Controller, Get, Post, HttpCode, Headers } from '@nestjs/common';
+import { Controller, Get, Post, HttpCode, Req } from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
 import { Public } from '../../common/decorators/public.decorator';
 
@@ -18,10 +18,14 @@ export class WhatsappController {
     return this.whatsapp.logout();
   }
 
-  // Consumed by the WA bridge (localhost) with a shared secret, not the admin JWT.
+  // Consumed by the local WA bridge only. Public route, but gated to localhost:
+  // external calls reach the API via nginx and carry X-Forwarded-For.
   @Public()
   @Get('roster')
-  roster(@Headers('x-bridge-secret') secret?: string) {
-    return this.whatsapp.roster(secret);
+  roster(@Req() req: any) {
+    const xff = req.headers?.['x-forwarded-for'];
+    const ip = String(req.socket?.remoteAddress || req.ip || '');
+    const local = !xff && (ip.includes('127.0.0.1') || ip === '::1');
+    return this.whatsapp.roster(local);
   }
 }
