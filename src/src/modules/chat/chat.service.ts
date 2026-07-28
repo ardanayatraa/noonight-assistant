@@ -60,6 +60,7 @@ export class ChatService {
       // 6. Session + AI context
       const session = await this.findOrCreateSession(project.id, from, 'whatsapp');
       const structure = await this.getProjectMemory(project.id, 'project_structure');
+      const overview = this.workspaceService.getProjectOverview(project.workspacePath || '');
       const codeResults = this.workspaceService.searchCode(project.workspacePath || '', body);
       const memory = await this.memoryService.buildContext(client.id, project.id);
       const history = await this.getRecentHistory(session.id);
@@ -72,6 +73,7 @@ export class ChatService {
         projectName: project.name,
         framework: project.framework || 'Unknown',
         structure: structure || '',
+        overview,
         codeResults,
         memory,
         history,

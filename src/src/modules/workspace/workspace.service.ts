@@ -8,6 +8,14 @@ import * as path from 'path';
 @Injectable()
 export class WorkspaceService {
   private readonly logger = new Logger(WorkspaceService.name);
+  private readonly CODE_EXT = new Set([
+    '.ts', '.tsx', '.js', '.jsx', '.kt', '.java', '.py', '.go', '.php',
+    '.rb', '.rs', '.vue', '.swift', '.dart', '.cs', '.cpp', '.c',
+  ]);
+  private readonly SKIP_DIRS = new Set([
+    'node_modules', 'vendor', 'dist', 'build', '.git', '.idea', '.gradle',
+    '__pycache__', '.next', 'out', 'target', 'bin', 'obj',
+  ]);
 
   constructor(private prisma: PrismaService) {}
 
@@ -185,5 +193,85 @@ export class WorkspaceService {
     } catch {
       return 'Cannot read file.';
     }
+  }
+
+  /**
+   * A rich, READ-ONLY snapshot of the repo so the agent can actually explain the
+   * project: README + manifests + a sample of real source files (entry points
+   * first). Capped in size. Used for broad "what is this project" questions.
+   */
+  getProjectOverview(workspacePath: string, maxChars = 9000): string {
+    if (!workspacePath || !fs.existsSync(workspacePath)) return '';
+    const parts: string[] = [];
+    let total = 0;
+    const add = (label: string, raw: string, perFileCap = 3000): boolean => {
+      if (total >= maxChars) return false;
+      let c = raw;
+      if (c.length > perFileCap) c = c.slice(0, perFileCap) + '\n… (truncated)';
+      const block = `--- ${label} ---\n${c}\n`;
+      if (total + block.length > maxChars) return false;
+      parts.push(block);
+      total += block.length;
+      return true;
+    };
+
+    const manifests = [
+      'README.md', 'README', 'readme.md', 'Readme.md',
+      'package.json', 'composer.json', 'requirements.txt', 'pyproject.toml',
+      'go.mod', 'Cargo.toml', 'pom.xml', 'Gemfile', 'pubspec.yaml',
+      'build.gradle', 'build.gradle.kts', 'settings.gradle.kts',
+      'app/build.gradle', 'app/build.gradle.kts', 'gradle/libs.versions.toml',
+      'app/src/main/AndroidManifest.xml',
+      'next.config.js', 'nuxt.config.js', 'vite.config.ts', 'artisan',
+    ];
+    for (const rel of manifests) {
+      try {
+        const full = path.join(workspacePath, rel);
+        if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+          add(rel, fs.readFileSync(full, 'utf-8'));
+        }
+      } catch { /* ignore */ }
+    }
+
+    // A sample of real source files (entry points prioritized)
+    const sources = this.collectSourceFiles(workspacePath, 60);
+    const rank = (p: string) => {
+      const b = path.basename(p).toLowerCase();
+      let s = 0;
+      if (/(^|\/)(main|app|index|activity|application|server|routes?)/.test(b)) s -= 5;
+      if (p.includes('/src/main/') || p.includes('/src/') || p.includes('/lib/')) s -= 2;
+      if (/test|spec|mock|\.d\.ts$/.test(p)) s += 10;
+      return s;
+    };
+    sources.sort((a, b) => rank(a) - rank(b));
+    for (const f of sources.slice(0, 14)) {
+      if (total >= maxChars) break;
+      try {
+        const content = fs.readFileSync(f, 'utf-8').split('\n').slice(0, 45).join('\n');
+        add(path.relative(workspacePath, f).replace(/\\/g, '/'), content, 1600);
+      } catch { /* ignore */ }
+    }
+
+    return parts.join('\n');
+  }
+
+  private collectSourceFiles(root: string, limit: number): string[] {
+    const out: string[] = [];
+    const walk = (dir: string, depth: number) => {
+      if (out.length >= limit || depth > 6) return;
+      let entries: string[] = [];
+      try { entries = fs.readdirSync(dir); } catch { return; }
+      for (const e of entries) {
+        if (out.length >= limit) return;
+        if (e.startsWith('.') || this.SKIP_DIRS.has(e)) continue;
+        const full = path.join(dir, e);
+        let st: fs.Stats;
+        try { st = fs.statSync(full); } catch { continue; }
+        if (st.isDirectory()) walk(full, depth + 1);
+        else if (this.CODE_EXT.has(path.extname(e).toLowerCase())) out.push(full);
+      }
+    };
+    walk(root, 0);
+    return out;
   }
 }

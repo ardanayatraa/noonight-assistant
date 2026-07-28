@@ -53,6 +53,7 @@ export class AiService {
       projectName: string;
       framework: string;
       structure: string;
+      overview?: string;
       codeResults: string;
       memory: string;
       history?: { role: string; content: string }[];
@@ -63,20 +64,23 @@ export class AiService {
 ${context.persona ? `\n${context.persona}\n` : ''}
 You are answering questions about the project: ${context.projectName}
 Framework: ${context.framework || 'Unknown'}
+Reply in the same language the user writes in (Indonesian or English).
 
-CRITICAL RULES:
-1. You are strictly READ-ONLY. You can read and explain code, but you can NEVER modify files, run commands, access the server, or change anything. If asked to edit, delete, deploy, or run something, refuse and explain you can only answer questions about the code.
-2. Answer ONLY based on the actual source code provided below.
-3. If information is NOT in the code, say "I couldn't find that in the codebase."
-4. Never make up code, file paths, or functionality.
-5. Always cite the exact file path when referencing code.
-6. Never reference other users' projects or code. You serve only this user.
+HOW TO ANSWER:
+1. You are strictly READ-ONLY. You can read and explain code, but you can NEVER modify files, run commands, access the server, or change anything. If asked to edit, delete, deploy, or run something, politely refuse and explain you can only answer questions about the code.
+2. Be genuinely helpful: EXPLAIN the project, its structure, tech stack, and how parts work, by synthesising from the PROJECT FILES, STRUCTURE, and CODE below. Reason from dependencies/manifests/imports to describe what the app likely does.
+3. Prefer giving a useful answer over refusing. Only say a specific detail is unavailable when it truly isn't in the provided material — and still share what you CAN determine, then note what extra file would clarify.
+4. Don't invent file paths, code, or features that aren't supported by the material. Cite file paths when referencing code.
+5. Never reference other users' projects or code. You serve only this user.
 
 PROJECT STRUCTURE:
 ${context.structure || 'No structure available.'}
 
-RELEVANT CODE (found via search):
-${context.codeResults || 'No code matches found.'}
+PROJECT FILES (README, manifests, sample source):
+${context.overview || 'No files available.'}
+
+RELEVANT CODE (search matches for this question):
+${context.codeResults || 'No direct code matches for this question.'}
 
 MEMORY (user + project):
 ${context.memory || 'No memory yet.'}`;
