@@ -25,10 +25,50 @@ const PORT = Number(process.env.WA_BRIDGE_PORT || 3457);
 const NOONIGHT_WEBHOOK =
   process.env.NOONIGHT_WEBHOOK || 'http://127.0.0.1:3001/api/v1/webhook/whatsapp';
 const SESSION_DIR = process.env.WA_SESSION_DIR || path.join(__dirname, 'session');
+const ROSTER_URL =
+  process.env.NOONIGHT_ROSTER_URL || 'http://127.0.0.1:3001/api/v1/whatsapp/roster';
+const BRIDGE_SECRET = process.env.WA_BRIDGE_SECRET || '';
 
 const logger = pino({ level: 'silent' });
 let sock = null;
 const state = { status: 'connecting', qr: null, me: null, updatedAt: Date.now() };
+
+// LID → phone-number map. WhatsApp addresses senders by LID and hides the phone
+// number, so we resolve it by asking onWhatsApp() for each registered client.
+const lidToPhone = new Map();
+let rosterRefreshing = false;
+
+async function refreshRoster() {
+  if (rosterRefreshing || !sock) return;
+  rosterRefreshing = true;
+  try {
+    const r = await fetch(ROSTER_URL, {
+      headers: BRIDGE_SECRET ? { 'x-bridge-secret': BRIDGE_SECRET } : {},
+    });
+    if (!r.ok) {
+      console.error('[wa] roster fetch failed:', r.status);
+      return;
+    }
+    const { numbers } = await r.json();
+    let mapped = 0;
+    for (const phone of numbers || []) {
+      try {
+        const res = await sock.onWhatsApp(phone);
+        const item = Array.isArray(res) ? res[0] : null;
+        const lid = item?.lid || item?.lidJid;
+        if (lid) {
+          lidToPhone.set(String(lid).split('@')[0].split(':')[0], phone);
+          mapped++;
+        }
+      } catch { /* per-number */ }
+    }
+    console.log(`[wa] roster synced: ${(numbers || []).length} clients, ${mapped} LIDs mapped (total ${lidToPhone.size})`);
+  } catch (e) {
+    console.error('[wa] roster error:', e.message);
+  } finally {
+    rosterRefreshing = false;
+  }
+}
 
 function setState(patch) {
   Object.assign(state, patch, { updatedAt: Date.now() });
@@ -42,24 +82,34 @@ function setState(patch) {
 async function resolveSenderNumber(sock, key) {
   const cands = [key.remoteJid, key.remoteJidAlt, key.participant, key.participantAlt]
     .filter((j) => typeof j === 'string' && j);
-  let pn = cands.find((j) => j.endsWith('@s.whatsapp.net'));
-  if (!pn) {
-    const lid = cands.find((j) => j.endsWith('@lid'));
+
+  // 1) A phone-number JID is already present
+  const pn = cands.find((j) => j.endsWith('@s.whatsapp.net'));
+  if (pn) return pn.split('@')[0].split(':')[0];
+
+  // 2) LID sender → resolve via the roster map (refresh once on a miss)
+  const lidJid = cands.find((j) => j.endsWith('@lid'));
+  if (lidJid) {
+    const lidNum = lidJid.split('@')[0].split(':')[0];
+    if (lidToPhone.has(lidNum)) return lidToPhone.get(lidNum);
+    // Try baileys' own mapping first
     const lm = sock?.signalRepository?.lidMapping;
-    if (lid && lm) {
-      for (const fn of ['getPNForLID', 'getPnForLid', 'pnForLid']) {
-        try {
-          if (typeof lm[fn] === 'function') {
-            const r = await lm[fn](lid);
-            const val = typeof r === 'string' ? r : r?.pn || r?.jid || '';
-            if (val) { pn = val; break; }
-          }
-        } catch { /* ignore */ }
-      }
+    for (const fn of ['getPNForLID', 'getPnForLid']) {
+      try {
+        if (lm && typeof lm[fn] === 'function') {
+          const r = await lm[fn](lidJid);
+          const val = typeof r === 'string' ? r : r?.pn || r?.jid || '';
+          if (val && val.endsWith('@s.whatsapp.net')) return val.split('@')[0].split(':')[0];
+        }
+      } catch { /* ignore */ }
     }
+    // Refresh the client roster once, then re-check
+    await refreshRoster();
+    if (lidToPhone.has(lidNum)) return lidToPhone.get(lidNum);
+    return lidNum; // fallback — Noonight will report "not registered"
   }
-  const jid = pn || cands[0] || '';
-  return jid.split('@')[0].split(':')[0];
+
+  return (cands[0] || '').split('@')[0].split(':')[0];
 }
 
 async function start() {
@@ -92,6 +142,7 @@ async function start() {
       const me = sock.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null;
       setState({ status: 'connected', qr: null, me });
       console.log('[wa] connected as', me);
+      setTimeout(() => refreshRoster().catch(() => {}), 3000); // let sync settle
     }
 
     if (connection === 'close') {
@@ -169,6 +220,9 @@ app.post('/logout', async (_req, res) => {
 app.listen(PORT, '127.0.0.1', () =>
   console.log(`[wa] bridge on http://127.0.0.1:${PORT} → ${NOONIGHT_WEBHOOK}`),
 );
+
+// Keep the LID→phone map fresh (picks up newly registered clients)
+setInterval(() => refreshRoster().catch(() => {}), 10 * 60 * 1000);
 
 start().catch((e) => {
   console.error('[wa] fatal start error:', e);
